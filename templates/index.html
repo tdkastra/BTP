@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Wine Quality Real-Time Prediction</title>
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+
+        #heading-box {
+            text-align: center;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 2px solid #ccc;
+            border-radius: 10px;
+            box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.4);
+            background-color: #f4f4f4;
+            transition: box-shadow 0.3s;
+        }
+
+        #heading-box:hover {
+            box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.9);
+        }
+        #emissionsChart:hover {
+            box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.9);
+        }
+        #prediction:hover {
+            box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.9);
+        }
+    
+        #emissionsChart,
+        #totalEmissions:hover {
+            box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.9);
+        }
+        #h1:hover {
+            box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.9);
+        }
+
+        h1 {
+            margin: 0;
+            font-family: 'Arial Black', sans-serif !important;
+            font-weight: bold !important;
+            transition: box-shadow 0.3s;
+        }
+    
+        #emissionsChart,
+        #totalEmissions {
+            background: #f4f4f4;
+            padding: 20px;
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.4);
+            transition: box-shadow 0.3s;
+        }
+
+        #prediction {
+            background: #e6e6e6;
+            padding: 20px;
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.4);
+            transition: box-shadow 0.3s;
+        }
+
+        #emissionsChart {
+            width: 5in;
+            /* Keep the width the same */
+            height: 1in;
+            /* Reduce the height */
+            transition: box-shadow 0.3s;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="heading-box">
+        <h1>Real-Time Wine Quality Prediction Dashboard</h1>
+    </div>
+    <div id="prediction">Waiting for data...</div>
+    <div id="totalEmissions">Total Emissions: </div>
+    <canvas id="emissionsChart"></canvas>
+    <!-- Canvas for Chart.js chart -->
+
+    <script type="text/javascript">
+        const socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port, {
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000
+        });
+
+        const ctx = document.getElementById('emissionsChart').getContext('2d');
+        const emissionsChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: []
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                animation: {
+                    duration: 0 // general animation time
+                },
+            }
+        });
+
+        const cumulativeEmissions = {}; // Object to hold cumulative emissions for each model
+
+        function getRandomColor() {
+            const r = Math.floor(Math.random() * 256);
+            const g = Math.floor(Math.random() * 256);
+            const b = Math.floor(Math.random() * 256);
+            return `rgba(${r}, ${g}, ${b}, 0.8)`;
+        }
+
+        socket.on('connect', function () {
+            console.log('Connected to the server.');
+            document.getElementById('prediction').innerHTML = 'Connected! Awaiting data...';
+        });
+
+        socket.on('new_data', function (data) {
+            console.log('Received data:', data);
+            const currentTimestamp = new Date().toLocaleTimeString();
+            emissionsChart.data.labels.push(currentTimestamp);
+
+            let totalEmissionsText = "Total Emissions:<br>";
+
+            data.results.forEach(result => {
+                let dataset = emissionsChart.data.datasets.find(d => d.label === result.model);
+                if (!dataset) {
+                    dataset = {
+                        label: result.model,
+                        backgroundColor: getRandomColor(),
+                        borderColor: getRandomColor(),
+                        data: [],
+                        fill: false
+                    };
+                    emissionsChart.data.datasets.push(dataset);
+                    cumulativeEmissions[result.model] = 0; // Initialize cumulative emissions for the model
+                }
+                dataset.data.push(result.emissions);
+                cumulativeEmissions[result.model] += result.emissions; // Update cumulative emissions for the model
+
+                // Display instantaneous and cumulative emissions for each model
+                totalEmissionsText += `${result.model}: ${result.emissions.toFixed(8)} kg of CO2 (instantaneous), Cumulative: ${cumulativeEmissions[result.model].toFixed(8)} kg of CO2<br>`;
+            });
+
+            emissionsChart.update();
+
+            document.getElementById('totalEmissions').innerHTML = totalEmissionsText;
+
+            document.getElementById('prediction').innerHTML = 'Prediction: ' + data.results[0].prediction.toFixed(2);
+            const sampleDetails = data.sample.map((value, index) => `Feature ${index + 1}: ${value.toFixed(2)}`).join('<br>');
+            document.getElementById('data-display').innerHTML = sampleDetails;
+        });
+
+        socket.on('disconnect', function () {
+            console.log('Disconnected from the server.');
+            document.getElementById('prediction').innerHTML = 'Disconnected! Trying to reconnect...';
+        });
+
+        socket.on('reconnect_failed', function () {
+            document.getElementById('prediction').innerHTML = 'Reconnection Failed! Please refresh the page to try again.';
+        });
+    </script>
+
+</body>
+
+</html>
